@@ -1,0 +1,117 @@
+const CACHE_NAME = 'pill-remind-v1.2';
+const urlsToCache = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  'https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap',
+  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
+];
+
+// حدث التثبيت - يخزن الملفات في ذاكرة التخزين المؤقت
+self.addEventListener('install', function(event) {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(function(cache) {
+        console.log('تم فتح ذاكرة التخزين المؤقت');
+        return cache.addAll(urlsToCache);
+      })
+      .then(() => {
+        console.log('جميع الملفات مخزنة في الذاكرة المؤقتة بنجاح');
+        return self.skipWaiting();
+      })
+  );
+});
+
+// حدث التفعيل - يحذف الذاكرات القديمة
+self.addEventListener('activate', function(event) {
+  event.waitUntil(
+    caches.keys().then(function(cacheNames) {
+      return Promise.all(
+        cacheNames.map(function(cacheName) {
+          if (cacheName !== CACHE_NAME) {
+            console.log('حذف الذاكرة المؤقتة القديمة:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+  return self.clients.claim();
+});
+
+// حدث الجلب - يخدم الملفات من الذاكرة المؤقتة عندما يكون ذلك ممكنًا
+self.addEventListener('fetch', function(event) {
+  if (!event.request.url.startsWith('http')) return;
+  
+  event.respondWith(
+    caches.match(event.request)
+      .then(function(response) {
+        // يعيد الملف من الذاكرة المؤقتة إذا وجد
+        if (response) {
+          return response;
+        }
+
+        // إذا لم يكن موجودًا في الذاكرة، يجلبها من الشبكة
+        return fetch(event.request).then(
+          function(response) {
+            // يتأكد من أن الرد صالح للتخزين
+            if(!response || response.status !== 200 || response.type !== 'basic') {
+              return response;
+            }
+
+            var responseToCache = response.clone();
+
+            caches.open(CACHE_NAME)
+              .then(function(cache) {
+                cache.put(event.request, responseToCache);
+              });
+
+            return response;
+          }
+        );
+      })
+    );
+});
+
+// حدث الإشعارات - يعالج الإشعارات الواردة
+self.addEventListener('push', function(event) {
+  if (event.data) {
+    const data = event.data.json();
+    const options = {
+      body: data.body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-72.png',
+      vibrate: [200, 100, 200],
+      tag: 'pill-reminder'
+    };
+
+    event.waitUntil(
+      self.registration.showNotification(data.title, options)
+    );
+  }
+});
+
+// حدث النقر على الإشعارات
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  
+  event.waitUntil(
+    clients.openWindow('/')
+  );
+});
+
+// حدث المزامنة في الخلفية
+self.addEventListener('sync', function(event) {
+  if (event.tag === 'medication-sync') {
+    event.waitUntil(doBackgroundSync());
+  }
+});
+
+// مزامنة الخلفية
+function doBackgroundSync() {
+  return new Promise((resolve, reject) => {
+    // هنا يمكنك إضافة منطق المزامنة
+    console.log('جاري مزامنة بيانات الأدوية في الخلفية');
+    resolve();
+  });
+}
